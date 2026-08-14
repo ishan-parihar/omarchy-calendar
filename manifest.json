@@ -2,8 +2,9 @@
   "schemaVersion": 1,
   "id": "tmn73.calendar",
   "name": "Calendar",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "tmn73",
+  "license": "MIT",
   "description": "Your Google Calendar in the bar. Your next meeting at a glance, and one click to join it.",
   "kinds": [
     "bar-widget"
