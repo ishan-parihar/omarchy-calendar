@@ -9,6 +9,11 @@ Type=oneshot
 # `go install` (~/go/bin) would be invisible. sync/setup writes an absolute
 # path into calendar-sync.json; this list is the fallback for everyone else.
 Environment=PATH=%h/go/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+# Optional keyring env for gog installs using the encrypted file backend
+# (GOG_KEYRING_BACKEND/GOG_KEYRING_PASSWORD). Written by sync/setup when
+# those variables are present in its environment. The leading dash means a
+# missing file is fine, which is the common OS-keyring case.
+EnvironmentFile=-%h/.config/omarchy/calendar-gog.env
 ExecStart=%h/.config/omarchy/plugins/omarchy-calendar/sync/omarchy-calendar-sync
 # A failed run is deliberately allowed to surface as a failed unit. The
 # sync leaves the previous events file intact either way, and a user

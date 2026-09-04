@@ -202,6 +202,21 @@ EOF
   echo "  calendar access works for $ACCOUNT"
 fi
 
+step "Recording gog keyring env, if any"
+# Installs whose gog uses the encrypted file backend (rather than the OS
+# keyring) need these variables wherever gog runs, including the systemd
+# timer, which inherits nothing from any shell. Stored 0600, loaded via
+# EnvironmentFile in the service unit.
+if [ -n "${GOG_KEYRING_BACKEND:-}" ] || [ -n "${GOG_KEYRING_PASSWORD:-}" ]; then
+  keyring_env="$HOME/.config/omarchy/calendar-gog.env"
+  {
+    [ -n "${GOG_KEYRING_BACKEND:-}" ] && printf 'GOG_KEYRING_BACKEND=%s\n' "$GOG_KEYRING_BACKEND"
+    [ -n "${GOG_KEYRING_PASSWORD:-}" ] && printf 'GOG_KEYRING_PASSWORD=%s\n' "$GOG_KEYRING_PASSWORD"
+  } > "$keyring_env"
+  chmod 600 "$keyring_env"
+  echo "  keyring env persisted to $keyring_env"
+fi
+
 step "Recording your account and where gog lives"
 # The timer runs without your shell PATH, so the bare name is not enough.
 gog_path=$(command -v gog)
