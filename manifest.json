@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "id": "tmn73.calendar",
+  "id": "omarchy-calendar",
   "name": "Calendar",
-  "version": "0.3.0",
-  "author": "tmn73",
+  "version": "0.4.0",
+  "author": "ishan-parihar",
   "license": "MIT",
   "description": "Your Google Calendar in the bar. Your next meeting at a glance, and one click to join it. (gog-powered sync fork of tmn73/omarchy-calendar)",
   "kinds": [

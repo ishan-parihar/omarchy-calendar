@@ -17,8 +17,8 @@ import "Model.js" as Model
 // anchor against.
 Panel {
   id: root
-  moduleName: "tmn73.calendar"
-  ipcTarget: "tmn73.calendar"
+  moduleName: "omarchy-calendar"
+  ipcTarget: "omarchy-calendar"
   manageIpc: false
 
   property var anchorItem: null

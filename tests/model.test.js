@@ -400,8 +400,8 @@ test('eventUrlFor mirrors meetingUrlFor and is https only', () => {
 
 test('commandPathFromUrl strips the file scheme and shortens home', () => {
   assert.equal(
-    Model.commandPathFromUrl('file:///home/tmn/.config/omarchy/plugins/tmn73.calendar/sync/setup', '/home/tmn'),
-    '~/.config/omarchy/plugins/tmn73.calendar/sync/setup'
+    Model.commandPathFromUrl('file:///home/ishan/.config/omarchy/plugins/omarchy-calendar/sync/setup', '/home/ishan'),
+    '~/.config/omarchy/plugins/omarchy-calendar/sync/setup'
   )
 })
 

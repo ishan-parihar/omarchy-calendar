@@ -9,7 +9,7 @@ Type=oneshot
 # `go install` (~/go/bin) would be invisible. sync/setup writes an absolute
 # path into calendar-sync.json; this list is the fallback for everyone else.
 Environment=PATH=%h/go/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin
-ExecStart=%h/.config/omarchy/plugins/tmn73.calendar/sync/omarchy-calendar-sync
+ExecStart=%h/.config/omarchy/plugins/omarchy-calendar/sync/omarchy-calendar-sync
 # A failed run is deliberately allowed to surface as a failed unit. The
 # sync leaves the previous events file intact either way, and a user
 # needs `systemctl --user status` to show that something is wrong.

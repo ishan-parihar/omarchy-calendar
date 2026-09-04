@@ -49,15 +49,15 @@ omarchy plugin add https://github.com/ishan-parihar/omarchy-calendar.git --enabl
 
 This widget **replaces** the built-in clock. In `~/.config/omarchy/shell.json`,
 remove the `omarchy.clock` entry from `bar.layout.center` and point
-`bar.centerAnchor` at `tmn73.calendar`:
+`bar.centerAnchor` at `omarchy-calendar`:
 
 ```json
 {
   "bar": {
-    "centerAnchor": "tmn73.calendar",
+    "centerAnchor": "omarchy-calendar",
     "layout": {
       "center": [
-        { "id": "tmn73.calendar", "format": "dddd HH:mm" }
+        { "id": "omarchy-calendar", "format": "dddd HH:mm" }
       ]
     }
   }
@@ -81,7 +81,7 @@ Prerequisite: [gog](https://gogcli.sh) (`go install
 github.com/openclaw/gogcli/cmd/gog@latest`, or a release binary).
 
 ```bash
-~/.config/omarchy/plugins/tmn73.calendar/sync/setup
+~/.config/omarchy/plugins/omarchy-calendar/sync/setup
 ```
 
 Run it in a real terminal. It pauses for input, and two steps have to be done
@@ -238,7 +238,7 @@ systemctl --user list-timers omarchy-calendar-sync.timer
 systemctl --user disable --now omarchy-calendar-sync.timer
 rm ~/.config/systemd/user/omarchy-calendar-sync.{service,timer}
 systemctl --user daemon-reload
-omarchy plugin remove tmn73.calendar
+omarchy plugin remove omarchy-calendar
 ```
 
 Then put `omarchy.clock` back in `shell.json` and `omarchy restart shell`.
