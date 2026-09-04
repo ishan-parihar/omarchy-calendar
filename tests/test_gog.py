@@ -97,7 +97,7 @@ class TestEvents(unittest.TestCase):
         items = client.events("2026-08-01T00:00:00+00:00", "2026-09-01T00:00:00+00:00")
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["id"], "evt1")
-        self.assertEqual(items[0]["calendarId"], "a@example.com")
+        self.assertEqual(items[0]["CalendarID"], "a@example.com")
 
     def test_single_call_covers_all_calendars_with_window(self):
         runner = FakeRunner({"events": (0, fixture("gog-events.json"), "")})

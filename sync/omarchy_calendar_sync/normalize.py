@@ -136,6 +136,22 @@ def _parse_endpoint(node, tz):
     return parsed_dt.astimezone(tz), False
 
 
+def event_calendar_id(event):
+    """Calendar the event belongs to.
+
+    gog emits `CalendarID` on the per-event wrapper; the underlying Google
+    API resource would use `organizer.email` as a fallback. Either way the
+    caller (cli.run) keys its grouping off this, so the wrong name means
+    every event gets dropped on the floor.
+    """
+    for key in ("calendarId", "CalendarID"):
+        value = event.get(key)
+        if value:
+            return str(value)
+    organizer = event.get("organizer") or {}
+    return str(organizer.get("email") or "")
+
+
 def _covered_days(start_dt, end_dt, all_day):
     """Inclusive list of local dates the event occupies."""
     first = start_dt.date()

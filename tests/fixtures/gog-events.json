@@ -6,7 +6,7 @@
       "summary": "Standup",
       "start": { "dateTime": "2026-08-10T09:00:00-05:00" },
       "end": { "dateTime": "2026-08-10T09:15:00-05:00" },
-      "calendarId": "a@example.com",
+      "CalendarID": "a@example.com",
       "startLocal": "2026-08-10 09:00",
       "endLocal": "2026-08-10 09:15",
       "timezone": "America/Bogota"

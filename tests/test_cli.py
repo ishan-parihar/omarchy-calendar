@@ -51,7 +51,7 @@ class FakeGog:
         for calendar in self._calendars:
             for event in self._events:
                 copy = dict(event)
-                copy["calendarId"] = calendar["id"]
+                copy["CalendarID"] = calendar["id"]
                 tagged.append(copy)
         return tagged
 
@@ -140,7 +140,7 @@ class TestRun(unittest.TestCase):
             "id": "stray",
             "status": "confirmed",
             "summary": "Stray",
-            "calendarId": "ghost@example.com",
+            "CalendarID": "ghost@example.com",
             "start": {"dateTime": "2026-08-10T09:00:00-05:00"},
             "end": {"dateTime": "2026-08-10T09:15:00-05:00"},
         }

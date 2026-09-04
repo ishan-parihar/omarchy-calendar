@@ -145,7 +145,7 @@ def run(client, cfg, now, out_path, local_tz):
         # stable: the alphabetically first calendar's copy wins.
         grouped = {}
         for gevent in raw:
-            calendar = by_id.get(gevent.get("calendarId"))
+            calendar = by_id.get(normalize.event_calendar_id(gevent))
             if calendar is None:
                 continue
             grouped.setdefault(calendar["name"], (calendar, []))[1].append(gevent)
