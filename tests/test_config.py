@@ -122,12 +122,23 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestGwsPath(unittest.TestCase):
+class TestGogPath(unittest.TestCase):
     def test_defaults_to_the_bare_name(self):
-        self.assertEqual(config.DEFAULTS["gwsPath"], "gws")
+        self.assertEqual(config.DEFAULTS["gogPath"], "gog")
 
     def test_an_absolute_path_is_kept(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "c.json"
-            path.write_text(json.dumps({"gwsPath": "/opt/bin/gws"}))
-            self.assertEqual(config.load(path)["gwsPath"], "/opt/bin/gws")
+            path.write_text(json.dumps({"gogPath": "/home/user/go/bin/gog"}))
+            self.assertEqual(config.load(path)["gogPath"], "/home/user/go/bin/gog")
+
+
+class TestAccount(unittest.TestCase):
+    def test_defaults_to_empty(self):
+        self.assertEqual(config.DEFAULTS["account"], "")
+
+    def test_a_configured_account_is_kept(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "c.json"
+            path.write_text(json.dumps({"account": "you@gmail.com"}))
+            self.assertEqual(config.load(path)["account"], "you@gmail.com")

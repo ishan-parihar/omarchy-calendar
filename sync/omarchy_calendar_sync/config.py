@@ -12,11 +12,13 @@ from pathlib import Path
 CONFIG_PATH = Path.home() / ".config" / "omarchy" / "calendar-sync.json"
 
 DEFAULTS = {
-    "profile": str(Path.home() / ".config" / "gws-omarchy-calendar"),
+    # Google account (email or gog alias) passed as gog --account.
+    # Empty means gog's own default account.
+    "account": "",
     # Resolved to an absolute path by sync/setup. A systemd user service
     # does not inherit an interactive shell PATH, so relying on the bare
     # name works from a terminal and fails from the timer.
-    "gwsPath": "gws",
+    "gogPath": "gog",
     "calendars": {"include": [], "exclude": []},
     "window": {"pastDays": 7, "futureDays": 60},
 }

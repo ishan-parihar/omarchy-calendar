@@ -8,13 +8,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from omarchy_calendar_sync import cli, config, contract, gws
+from omarchy_calendar_sync import cli, config, contract, gog
 
 BOGOTA = ZoneInfo("America/Bogota")
 NOW = datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc)
 
 
-class FakeGws:
+class FakeGog:
+    """Emulates `gog calendar events --all`: every event once per calendar,
+    each copy tagged with that calendar's id, like the real CLI does."""
+
     def __init__(self, calendars=None, events=None, raises=None):
         self._calendars = calendars if calendars is not None else [
             {"id": "a@example.com", "name": "Personal", "color": "#f83a22"}
@@ -34,17 +37,23 @@ class FakeGws:
         return None
 
     def version(self):
-        return (0, 13, 2)
+        return (0, 39, 0)
 
     def calendars(self):
         if self._raises:
             raise self._raises
         return self._calendars
 
-    def events(self, calendar_id, time_min, time_max):
+    def events(self, time_min, time_max):
         if self._raises:
             raise self._raises
-        return self._events
+        tagged = []
+        for calendar in self._calendars:
+            for event in self._events:
+                copy = dict(event)
+                copy["calendarId"] = calendar["id"]
+                tagged.append(copy)
+        return tagged
 
 
 class TestWriteAtomic(unittest.TestCase):
@@ -65,7 +74,7 @@ class TestRun(unittest.TestCase):
     def test_writes_a_valid_document(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "calendar-events.json"
-            code = cli.run(FakeGws(), config.DEFAULTS, NOW, out, BOGOTA)
+            code = cli.run(FakeGog(), config.DEFAULTS, NOW, out, BOGOTA)
             self.assertEqual(code, 0)
             doc = json.loads(out.read_text())
             self.assertEqual(contract.validate(doc), [])
@@ -76,9 +85,9 @@ class TestRun(unittest.TestCase):
     def test_records_source_and_synced_at(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            cli.run(FakeGws(), config.DEFAULTS, NOW, out, BOGOTA)
+            cli.run(FakeGog(), config.DEFAULTS, NOW, out, BOGOTA)
             doc = json.loads(out.read_text())
-            self.assertEqual(doc["source"], "gws/0.13.2")
+            self.assertEqual(doc["source"], "gog/0.39.0")
             self.assertEqual(doc["syncedAt"], NOW.isoformat())
 
     def test_excluded_calendar_contributes_nothing(self):
@@ -86,7 +95,7 @@ class TestRun(unittest.TestCase):
         cfg["calendars"] = {"include": [], "exclude": ["Personal"]}
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            cli.run(FakeGws(), cfg, NOW, out, BOGOTA)
+            cli.run(FakeGog(), cfg, NOW, out, BOGOTA)
             self.assertEqual(json.loads(out.read_text())["events"], [])
 
     def test_events_are_sorted_by_date_then_start(self):
@@ -108,7 +117,7 @@ class TestRun(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            cli.run(FakeGws(events=events), config.DEFAULTS, NOW, out, BOGOTA)
+            cli.run(FakeGog(events=events), config.DEFAULTS, NOW, out, BOGOTA)
             titles = [e["title"] for e in json.loads(out.read_text())["events"]]
             self.assertEqual(titles, ["Earlier", "Later"])
 
@@ -117,7 +126,7 @@ class TestRun(unittest.TestCase):
             out = Path(tmp) / "out.json"
             out.write_text('{"version": 1, "events": ["previous"]}')
             code = cli.run(
-                FakeGws(raises=gws.GwsAuthError("401: invalid_grant")),
+                FakeGog(raises=gog.GogAuthError("401: invalid_grant")),
                 config.DEFAULTS,
                 NOW,
                 out,
@@ -126,11 +135,31 @@ class TestRun(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("previous", out.read_text())
 
+    def test_events_from_unknown_calendars_are_dropped(self):
+        stray = {
+            "id": "stray",
+            "status": "confirmed",
+            "summary": "Stray",
+            "calendarId": "ghost@example.com",
+            "start": {"dateTime": "2026-08-10T09:00:00-05:00"},
+            "end": {"dateTime": "2026-08-10T09:15:00-05:00"},
+        }
+
+        class StrayGog(FakeGog):
+            def events(self, time_min, time_max):
+                return super().events(time_min, time_max) + [stray]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "out.json"
+            cli.run(StrayGog(), config.DEFAULTS, NOW, out, BOGOTA)
+            titles = [e["title"] for e in json.loads(out.read_text())["events"]]
+            self.assertEqual(titles, ["Standup"])
+
     def test_api_failure_does_not_create_a_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
             code = cli.run(
-                FakeGws(raises=gws.GwsApiError("500: boom")),
+                FakeGog(raises=gog.GogApiError("500: boom")),
                 config.DEFAULTS,
                 NOW,
                 out,
@@ -240,7 +269,7 @@ class TestDeduplicationAcrossCalendars(unittest.TestCase):
         ]
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
-            cli.run(FakeGws(events=series), config.DEFAULTS, NOW, out, BOGOTA)
+            cli.run(FakeGog(events=series), config.DEFAULTS, NOW, out, BOGOTA)
             titles = json.loads(out.read_text())["events"]
             self.assertEqual(len(titles), 5)
 
@@ -253,7 +282,7 @@ class TestDeduplicationAcrossCalendars(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "out.json"
             cli.run(
-                FakeGws(calendars=calendars, events=[shared]),
+                FakeGog(calendars=calendars, events=[shared]),
                 config.DEFAULTS,
                 NOW,
                 out,

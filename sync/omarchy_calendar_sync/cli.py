@@ -1,4 +1,4 @@
-"""Entry point. Orchestrates config, gws, normalization, and the write."""
+"""Entry point. Orchestrates config, gog, normalization, and the write."""
 
 import argparse
 import json
@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from . import config as config_module
 from . import contract, normalize
-from .gws import Gws, GwsError
+from .gog import Gog, GogError
 
 EXIT_OK = 0
 EXIT_SYNC_FAILED = 1
@@ -134,22 +134,30 @@ def run(client, cfg, now, out_path, local_tz):
         calendars = config_module.select_calendars(client.calendars(), cfg)
         time_min, time_max = config_module.window_bounds(cfg, now)
 
+        # One call across all calendars; each item carries its own
+        # calendarId. Events from deselected calendars are dropped here.
+        by_id = {calendar["id"]: calendar for calendar in calendars}
+        raw = client.events(time_min, time_max)
+
         rows = []
         seen = set()
-        for calendar in calendars:
-            raw = client.events(calendar["id"], time_min, time_max)
-            fresh = _drop_duplicates(raw, seen)
+        # Grouped per calendar (in name order) so cross-calendar dedup is
+        # stable: the alphabetically first calendar's copy wins.
+        grouped = {}
+        for gevent in raw:
+            calendar = by_id.get(gevent.get("calendarId"))
+            if calendar is None:
+                continue
+            grouped.setdefault(calendar["name"], (calendar, []))[1].append(gevent)
+        for name in sorted(grouped):
+            calendar, gevents = grouped[name]
+            fresh = _drop_duplicates(gevents, seen)
             rows.extend(normalize.normalize_all(fresh, calendar, local_tz))
 
-        source = "gws/" + ".".join(str(part) for part in client.version())
-    except GwsError as error:
+        source = "gog/" + ".".join(str(part) for part in client.version())
+    except GogError as error:
         print(f"sync failed: {error}", file=sys.stderr)
-        print(
-            "if this is an auth error, run: "
-            "GOOGLE_WORKSPACE_CLI_CONFIG_DIR=" + str(cfg["profile"]) + " "
-            "gws auth login --scopes https://www.googleapis.com/auth/calendar.readonly",
-            file=sys.stderr,
-        )
+        print("if this is an auth error, run sync/setup again.", file=sys.stderr)
         return EXIT_SYNC_FAILED
 
     rows.sort(key=lambda row: (row["dateKey"], row["start"], row["title"]))
@@ -185,7 +193,7 @@ def main(argv=None):
     now = datetime.now(timezone.utc)
     local_tz = resolve_local_timezone()
 
-    return run(Gws(cfg["profile"], binary=cfg["gwsPath"]), cfg, now, out_path, local_tz)
+    return run(Gog(cfg["account"], binary=cfg["gogPath"]), cfg, now, out_path, local_tz)
 
 
 if __name__ == "__main__":

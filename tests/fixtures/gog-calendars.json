@@ -1,0 +1,18 @@
+{
+  "calendars": [
+    {
+      "id": "a@example.com",
+      "summary": "Personal",
+      "backgroundColor": "#f83a22",
+      "primary": true,
+      "timeZone": "America/Bogota"
+    },
+    {
+      "id": "b@example.com",
+      "summary": "Phases of the Moon",
+      "backgroundColor": "#fad165",
+      "timeZone": "America/Bogota"
+    }
+  ],
+  "nextPageToken": ""
+}
