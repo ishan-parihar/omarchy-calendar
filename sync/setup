@@ -1,24 +1,25 @@
 #!/usr/bin/env bash
-# Interactive onboarding for the Google Calendar sync (gog edition).
+# Onboarding for the Google Calendar sync (gog edition).
 #
-# Automates: gog credential storage, the scoped login, the config file, and
-# the systemd timer.
-# Cannot automate: the OAuth consent screen and creating the Desktop OAuth
-# client. Google exposes no API for those.
+# First it looks for Google auth gog already has and reuses it: no OAuth
+# client, no credentials, no browser when gog is already logged in. Only
+# when nothing usable exists does it drive `gog auth setup`, which automates
+# project creation and API enablement. Google exposes no API for the consent
+# screen, publishing the app, or creating the OAuth client, so those stay
+# manual. Ends by writing the config and installing the systemd timer.
 
 set -euo pipefail
 
-PROFILE_ACCOUNT="${PROFILE_ACCOUNT:-}"
+ACCOUNT="${1:-${PROFILE_ACCOUNT:-}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYNC_BIN="$SCRIPT_DIR/omarchy-calendar-sync"
-SCOPE="calendar.readonly"
 
 step() { printf '\n==> %s\n' "$1"; }
 
 # `read` returns non-zero at EOF, and under `set -e` that killed the whole
 # script at the very first prompt with no message at all. Anyone running this
 # through a pipe, a wrapper, or any non-interactive shell got as far as the
-# first Google Console instruction and no further, silently.
+# first prompt and no further, silently.
 pause() {
   if [ ! -t 0 ]; then
     printf '\n  Not a terminal, so not pausing. Do the step above before continuing.\n'
@@ -50,80 +51,139 @@ EOF
   exit 1
 }
 
-step "Manual step 1 of 2: create an OAuth client"
-cat <<EOF
-gog talks to Google as you, using your own Cloud project. One time only:
+# Prints the account email when `gog calendar calendars` works for it:
+# JSON with a calendars list on stdout means real access, anything else
+# (usage errors also exit 0 on stdout) means no.
+probe_account() {
+  local account="$1"
+  local args=()
+  [ -n "$account" ] && args+=(--account "$account")
+  if gog "${args[@]}" --no-input --readonly calendar calendars \
+      --all --max 1 --json 2>/dev/null \
+    | python3 -c 'import json, sys; sys.exit(0 if isinstance(json.load(sys.stdin).get("calendars"), list) else 1)' \
+      2>/dev/null; then
+    printf '%s' "$account"
+    return 0
+  fi
+  return 1
+}
 
-  1. Create a project: https://console.cloud.google.com/projectcreate
-  2. Enable the Calendar API: https://console.cloud.google.com/apis/library
-     (search "Google Calendar API", click Enable)
-  3. Configure the OAuth consent screen as External with your own email:
-     https://console.cloud.google.com/auth/branding
-  4. Publish the app: https://console.cloud.google.com/auth/audience
-     Under "Publishing status", click "Publish app". In Testing, Google
-     expires refresh tokens after 7 days and your calendar silently stops
-     updating. Unverified production apps show a one time warning and then
-     work indefinitely for personal use.
-  5. Create a Desktop app OAuth client:
-     https://console.cloud.google.com/auth/clients
-     Then click "Download JSON". The secret is not shown again after you
-     close that dialog.
+step "Reusing Google auth gog already has, if any"
+# An explicit account wins when it works; otherwise the default account is
+# tried, then every stored account in turn. gog owns credentials and tokens,
+# this script never touches them. An empty ACCOUNT means gog's default.
+REUSED=""
+if [ -n "$ACCOUNT" ]; then
+  if probe_account "$ACCOUNT" >/dev/null; then
+    REUSED="$ACCOUNT"
+  else
+    echo "  $ACCOUNT has no working calendar access, will log it in below."
+    ACCOUNT=""
+  fi
+fi
+if [ -z "$REUSED" ]; then
+  if probe_account "" >/dev/null; then
+    REUSED="default"
+  else
+    while read -r candidate; do
+      [ -n "$candidate" ] || continue
+      if probe_account "$candidate" >/dev/null; then
+        ACCOUNT="$candidate"
+        REUSED="$candidate"
+        break
+      fi
+    done < <(gog auth list --json 2>/dev/null \
+      | python3 -c 'import json, sys
+try:
+    accounts = json.load(sys.stdin).get("accounts", [])
+except ValueError:
+    accounts = []
+for a in accounts:
+    if isinstance(a, dict):
+        print(a.get("email") or a.get("account") or a.get("name") or "")' 2>/dev/null)
+  fi
+fi
 
-Full guide: https://gogcli.sh (quickstart) or
-  gog auth setup --help
-EOF
-pause
-
-step "Storing the OAuth client"
-downloaded=$(find "$HOME/Downloads" -maxdepth 1 -name 'client_secret_*.json' -print -quit 2>/dev/null || true)
-if [ -n "$downloaded" ]; then
-  gog auth credentials "$downloaded"
+if [ -n "$REUSED" ]; then
+  echo "  reusing gog account with calendar access: $REUSED"
 else
-  printf 'Path to the downloaded client_secret JSON: '
-  read -r manual
-  # shellcheck disable=SC2088
-  gog auth credentials "${manual/#\~/$HOME}"
-fi
+  step "No usable gog auth found, setting it up"
+  if [ -z "$ACCOUNT" ] && [ ! -t 0 ]; then
+    echo "  no Google account given and stdin is not a terminal. Re-run as:"
+    echo "    $0 you@gmail.com"
+    exit 1
+  fi
+  if [ -z "$ACCOUNT" ]; then
+    printf 'Google account email (e.g. you@gmail.com): '
+    read -r ACCOUNT
+  fi
 
-if [ -z "$PROFILE_ACCOUNT" ]; then
-  printf 'Google account email (e.g. you@gmail.com): '
-  read -r PROFILE_ACCOUNT
-fi
+  # gog automates project creation and API enablement when gcloud exists;
+  # otherwise those two stay manual. Either way the consent screen,
+  # publishing, and the OAuth client have no API and stay manual.
+  if command -v gcloud >/dev/null; then
+    PROJECT_ID="omarchy-cal-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+    echo "  creating Cloud project $PROJECT_ID and enabling the Calendar API"
+    gog auth setup "$ACCOUNT" --services calendar --readonly \
+      --gcloud-project "$PROJECT_ID" --create-project --enable-apis --open-console
+  else
+    cat <<'EOF'
+  gcloud is not installed, so two extra steps are manual (one time only):
 
-step "Signing in with read-only calendar access ($PROFILE_ACCOUNT)"
-# --readonly requests read-only OAuth scopes, matching the old
-# calendar.readonly posture. The browser tab shows exactly what is granted.
-gog auth add "$PROFILE_ACCOUNT" --services calendar --readonly
+    1. Create a project: https://console.cloud.google.com/projectcreate
+    2. Enable the Calendar API: https://console.cloud.google.com/apis/library
+EOF
+    PROJECT_ID=""
+  fi
 
-step "Verifying calendar access"
-# Surface a real error rather than reporting zero calendars on failure.
-if ! gog --account "$PROFILE_ACCOUNT" --no-input --readonly \
-    calendar calendars --all --json 2>/dev/null \
-  | python3 -c '
-import json, sys
-
-payload = json.load(sys.stdin)
-error = payload.get("error")
-if error:
-    print("  calendar access failed:", error)
-    raise SystemExit(1)
-
-count = len(payload.get("calendars", []))
-print(" ", count, "calendars reachable")
-if count == 0:
-    print("  That is unusual. Check that this Google account has any calendars.")
-'; then
   cat <<EOF
+  Two things Google exposes no API for (one time only):
 
-Calendar access failed. Most common reasons:
+    1. Consent screen as External with your own email:
+       https://console.cloud.google.com/auth/branding
+    2. Publish the app: https://console.cloud.google.com/auth/audience
+       Under "Publishing status", click "Publish app". In Testing, Google
+       expires refresh tokens after 7 days and your calendar silently stops
+       updating. Unverified production apps show a one time warning and then
+       work indefinitely for personal use.
+    3. Create a Desktop app OAuth client:
+       https://console.cloud.google.com/auth/clients
+       Then "Download JSON". The secret is not shown again after you close
+       that dialog.
+EOF
+  pause
+
+  downloaded=$(find "$HOME/Downloads" -maxdepth 1 -name 'client_secret_*.json' -print -quit 2>/dev/null || true)
+  if [ -n "$downloaded" ]; then
+    echo "  storing $downloaded and signing in"
+    # --readonly requests read-only OAuth scopes. The browser tab shows
+    # exactly what is granted: tick calendar access before continuing.
+    gog auth setup "$ACCOUNT" --services calendar --readonly \
+      ${PROJECT_ID:+--gcloud-project "$PROJECT_ID"} \
+      --credentials "$downloaded" --login
+  else
+    printf 'Path to the downloaded client_secret JSON: '
+    read -r manual
+    # shellcheck disable=SC2088
+    gog auth setup "$ACCOUNT" --services calendar --readonly \
+      ${PROJECT_ID:+--gcloud-project "$PROJECT_ID"} \
+      --credentials "${manual/#\~/$HOME}" --login
+  fi
+
+  if ! probe_account "$ACCOUNT" >/dev/null; then
+    cat <<EOF
+
+Calendar access still does not work. Most common reasons:
 
   - The calendar checkbox on the consent screen was left unticked. Re-run:
-      gog auth add $PROFILE_ACCOUNT --services calendar --readonly --force-consent
-  - The Calendar API is not enabled for your Cloud project (step 1.2 above).
+      gog auth add $ACCOUNT --services calendar --readonly --force-consent
+  - The Calendar API is not enabled for your Cloud project.
   - The app is still in Testing and the refresh token expired after 7 days.
-    Publish it (step 1.4 above), then log in again.
+    Publish it (step 2 above), then log in again.
 EOF
-  exit 1
+    exit 1
+  fi
+  echo "  calendar access works for $ACCOUNT"
 fi
 
 step "Recording your account and where gog lives"
@@ -131,7 +191,7 @@ step "Recording your account and where gog lives"
 gog_path=$(command -v gog)
 config="$HOME/.config/omarchy/calendar-sync.json"
 mkdir -p "$(dirname "$config")"
-python3 - "$config" "$gog_path" "$PROFILE_ACCOUNT" <<'PYEOF'
+python3 - "$config" "$gog_path" "$ACCOUNT" <<'PYEOF'
 import json, pathlib, sys
 
 path, gog_path, account = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
@@ -145,7 +205,7 @@ config["gogPath"] = gog_path
 config["account"] = account
 path.write_text(json.dumps(config, indent=2) + "\n")
 print("  gogPath set to", gog_path)
-print("  account set to", account)
+print("  account set to", account or "gog default")
 PYEOF
 
 step "Installing the systemd timer"

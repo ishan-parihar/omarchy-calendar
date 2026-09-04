@@ -130,7 +130,7 @@ The widget has no idea Google exists. It reads one file and renders it:
 ```
 
 Anything that writes that file works: khal, vdirsyncer, Nextcloud, an ICS feed,
-a shell script, a cron job of your own. No credentials, no network, no `gws`.
+a shell script, a cron job of your own. No Google credentials, no network, nothing but the file.
 
 ```json
 {
@@ -210,6 +210,8 @@ Sync behaviour lives in `~/.config/omarchy/calendar-sync.json`:
 the gog account (empty means gog's default). `gogPath` has to be absolute: a
 systemd user service does not inherit your shell's `PATH`, so a `gog`
 installed by `go install` (`~/go/bin`) is invisible to it under its bare name.
+Migrating from the upstream widget? Its old keys (`profile`, `gwsPath`) are
+silently ignored; only `account`, `gogPath`, `calendars`, and `window` apply.
 
 ## Troubleshooting
 
