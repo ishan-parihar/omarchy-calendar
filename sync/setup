@@ -77,8 +77,7 @@ if [ -n "$ACCOUNT" ]; then
   if probe_account "$ACCOUNT" >/dev/null; then
     REUSED="$ACCOUNT"
   else
-    echo "  $ACCOUNT has no working calendar access, will log it in below."
-    ACCOUNT=""
+    echo "  $ACCOUNT has no working calendar access yet, setting it up below."
   fi
 fi
 if [ -z "$REUSED" ]; then
@@ -121,11 +120,27 @@ else
   # gog automates project creation and API enablement when gcloud exists;
   # otherwise those two stay manual. Either way the consent screen,
   # publishing, and the OAuth client have no API and stay manual.
+  # NOTE: no --readonly here. It is gog's global runtime guard and blocks
+  # exactly these project/API mutations. Read-only scopes are requested at
+  # login time instead (gog auth add --readonly below).
   if command -v gcloud >/dev/null; then
-    PROJECT_ID="omarchy-cal-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
-    echo "  creating Cloud project $PROJECT_ID and enabling the Calendar API"
-    gog auth setup "$ACCOUNT" --services calendar --readonly \
-      --gcloud-project "$PROJECT_ID" --create-project --enable-apis --open-console
+    # Reuse the project a previous run made instead of littering a new one
+    # every time. Guarded by timeout: a hanging gcloud must not wedge setup.
+    PROJECT_ID=$(timeout 60 gcloud projects list \
+      --filter="projectId ~ ^omarchy-cal" --format='value(projectId)' \
+      --limit=1 2>/dev/null || true)
+    CREATE=""
+    if [ -n "$PROJECT_ID" ]; then
+      echo "  reusing Cloud project $PROJECT_ID"
+    else
+      PROJECT_ID="omarchy-cal-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+      echo "  creating Cloud project $PROJECT_ID"
+      CREATE="--create-project"
+    fi
+    echo "  enabling the Calendar API"
+    # shellcheck disable=SC2086
+    gog auth setup "$ACCOUNT" --services calendar --force \
+      --gcloud-project "$PROJECT_ID" $CREATE --enable-apis
   else
     cat <<'EOF'
   gcloud is not installed, so two extra steps are manual (one time only):
@@ -154,21 +169,22 @@ EOF
   pause
 
   downloaded=$(find "$HOME/Downloads" -maxdepth 1 -name 'client_secret_*.json' -print -quit 2>/dev/null || true)
-  if [ -n "$downloaded" ]; then
-    echo "  storing $downloaded and signing in"
-    # --readonly requests read-only OAuth scopes. The browser tab shows
-    # exactly what is granted: tick calendar access before continuing.
-    gog auth setup "$ACCOUNT" --services calendar --readonly \
-      ${PROJECT_ID:+--gcloud-project "$PROJECT_ID"} \
-      --credentials "$downloaded" --login
-  else
+  if [ -z "$downloaded" ]; then
+    if [ ! -t 0 ]; then
+      echo "  no client_secret JSON in ~/Downloads and stdin is not a terminal."
+      echo "  Download it via step 3 above, then re-run: $0 $ACCOUNT"
+      exit 1
+    fi
     printf 'Path to the downloaded client_secret JSON: '
     read -r manual
     # shellcheck disable=SC2088
-    gog auth setup "$ACCOUNT" --services calendar --readonly \
-      ${PROJECT_ID:+--gcloud-project "$PROJECT_ID"} \
-      --credentials "${manual/#\~/$HOME}" --login
+    downloaded="${manual/#\~/$HOME}"
   fi
+  echo "  storing $downloaded and signing in"
+  gog auth credentials "$downloaded"
+  # --readonly requests read-only OAuth scopes. The browser tab shows
+  # exactly what is granted: tick calendar access before continuing.
+  gog auth add "$ACCOUNT" --services calendar --readonly
 
   if ! probe_account "$ACCOUNT" >/dev/null; then
     cat <<EOF
